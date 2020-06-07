@@ -1,5 +1,6 @@
 import os
 import inspect
+import csv
 
 import java.util.ArrayList as ArrayList
 from java.io import File
@@ -26,9 +27,10 @@ from org.sleuthkit.autopsy.datamodel import ContentUtils
 from org.sleuthkit.autopsy.casemodule import Case
 from org.sleuthkit.autopsy.casemodule.services import Services
 from org.sleuthkit.autopsy.casemodule.services import FileManager
-from org.sleuthkit.autopsy.casemodule.services import Blackboard
 
 
+# Factory that defines the name and details of the module
+# Allows Autopsy to create instances of the modules that will do the analysis
 class W10FaceMessengerIngestModuleFactory(IngestModuleFactoryAdapter):
 
     moduleName = "W10-FaceMessenger @ Autopsy"
@@ -37,7 +39,7 @@ class W10FaceMessengerIngestModuleFactory(IngestModuleFactoryAdapter):
         return self.moduleName
 
     def getModuleDescription(self):
-        return "Wrapper module for W10-FaceMessenger."
+        return "Data Source-level Ingest Module that wraps around W10-FaceMessenger."
 
     def getModuleVersionNumber(self):
         return "1.0"
@@ -49,6 +51,7 @@ class W10FaceMessengerIngestModuleFactory(IngestModuleFactoryAdapter):
         return W10FaceMessengerIngestModule()
 
 
+# Data Source-level Ingest Module (one gets created per data source)
 class W10FaceMessengerIngestModule(DataSourceIngestModule):
 
     _logger = Logger.getLogger(W10FaceMessengerIngestModuleFactory.moduleName)
@@ -64,9 +67,56 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
     # See http://sleuthkit.org/autopsy/docs/api-docs/latest/classorg_1_1sleuthkit_1_1autopsy_1_1ingest_1_1_ingest_job_context.html
     def startUp(self, context):
         self.context = context
-        self.pathToEXE = os.path.join(os.path.dirname(os.path.abspath(__file__)), r"w10-facemessenger\w10-facemessenger.exe")
-        if not os.path.exists(self.pathToEXE):
+        if not PlatformUtil.isWindowsOS():
+            raise IngestModuleException("Not running on Windows")
+        self.EXE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), r"w10-facemessenger\w10-facemessenger.exe")
+        if not os.path.exists(self.EXE_PATH):
             raise IngestModuleException("W10-FaceMessenger was not found in module folder")
+        # Create custom artifact attribute types
+        self._startUpAttributeTypes()
+
+    def _startUpAttributeTypes(self):
+        # Custom attribute types for <<Contacts>>
+        attributeName = "FB_ID"
+        attributeValue = BlackboardAttribute.TSK_BLACKBOARD_ATTRIBUTE_VALUE_TYPE.STRING
+        attributeDisplayName = "Facebook ID"
+        self.ATTRIBUTE_TYPE_FB_ID = self._createAttributeType(attributeName, attributeValue, attributeDisplayName)
+
+        attributeName = "FB_PROFILE_PIC"
+        attributeValue = BlackboardAttribute.TSK_BLACKBOARD_ATTRIBUTE_VALUE_TYPE.STRING
+        attributeDisplayName = "Profile Picture URL (Small)"
+        self.ATTRIBUTE_TYPE_FB_PROFILE_PIC_SMALL = self._createAttributeType(attributeName, attributeValue, attributeDisplayName)
+
+        attributeName = "FB_PROFILE_PIC_LARGE"
+        attributeValue = BlackboardAttribute.TSK_BLACKBOARD_ATTRIBUTE_VALUE_TYPE.STRING
+        attributeDisplayName = "Profile Picture URL (Large)"
+        self.ATTRIBUTE_TYPE_FB_PROFILE_PIC_LARGE = self._createAttributeType(attributeName, attributeValue, attributeDisplayName)
+
+        # Custom attribute types for <<Messages>>
+        attributeName = "FB_ID_FROM"
+        attributeValue = BlackboardAttribute.TSK_BLACKBOARD_ATTRIBUTE_VALUE_TYPE.STRING
+        attributeDisplayName = "From Facebook ID"
+        self.ATTRIBUTE_TYPE_FB_ID_FROM = self._createAttributeType(attributeName, attributeValue, attributeDisplayName)
+
+        attributeName = "FB_NAME_FROM"
+        attributeValue = BlackboardAttribute.TSK_BLACKBOARD_ATTRIBUTE_VALUE_TYPE.STRING
+        attributeDisplayName = "From Name"
+        self.ATTRIBUTE_TYPE_FB_NAME_FROM = self._createAttributeType(attributeName, attributeValue, attributeDisplayName)
+
+        attributeName = "FB_CONTENT_URL"
+        attributeValue = BlackboardAttribute.TSK_BLACKBOARD_ATTRIBUTE_VALUE_TYPE.STRING
+        attributeDisplayName = "Content URL"
+        self.ATTRIBUTE_TYPE_FB_URL_CONTENT = self._createAttributeType(attributeName, attributeValue, attributeDisplayName)
+
+    # Wrapper method for org.sleuthkit.datamodel.Blackboard.getOrAddAttributeType
+    # See http://sleuthkit.org/sleuthkit/docs/jni-docs/4.9.0/classorg_1_1sleuthkit_1_1datamodel_1_1_blackboard.html#a0b6ee76fbbdbab422a2d97fff0848dd7
+    def _createAttributeType(self, typeName, valueType, displayName):
+        blackboard = Case.getCurrentCase().getServices().getBlackboard()
+        try:
+            attributeType = blackboard.getOrAddAttributeType(typeName, valueType, displayName)
+        except BlackboardException:
+            self.log(Level.INFO, "There was a problem getting or adding the attribute type" + valueType)
+        return attributeType
 
     # Where the analysis is done
     # The 'dataSource' object being passed in is of type org.sleuthkit.datamodel.Content
@@ -74,116 +124,303 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
     # 'progressBar' is of type org.sleuthkit.autopsy.ingest.DataSourceIngestModuleProgress
     # See http://sleuthkit.org/autopsy/docs/api-docs/latest/classorg_1_1sleuthkit_1_1autopsy_1_1ingest_1_1_data_source_ingest_module_progress.html
     def process(self, dataSource, progressBar):
-
-        if not PlatformUtil.isWindowsOS(): 
-            self.log(Level.INFO, "Ignoring data source. Not running on Windows")
-            return IngestModule.ProcessResult.OK
-
         progressBar.switchToIndeterminate()
-        
-        # Find user profile parent directories (%SystemDrive%\Users)
+
+        # Find Facebook Messenger (Beta) AppData
         fileManager = Case.getCurrentCase().getServices().getFileManager()
-        directories = fileManager.findFiles(dataSource, "Users")
-
-        numDirectories = len(directories)
-        progressBar.switchToDeterminate(numDirectories)
-        directoryCount = 0
-        for directory in directories:
-
+        directory = "Facebook.FacebookMessenger_8xx8rvfyw5nnt"
+        parentDirectory = "AppData/Local/Packages"
+        contents = fileManager.findFiles(dataSource, directory, parentDirectory)
+    
+        numContents = len(contents)
+        progressBar.switchToDeterminate(numContents)
+        contentCount = 0
+        for content in contents:
             # Check if the user pressed cancel while we were busy
             if self.context.isJobCancelled():
                 return IngestModule.ProcessResult.OK
-            
             # Report work progress to end user
-            directoryCount += 1
-            progressBar.progress(directoryCount)
-            self.log(Level.INFO, "Processing directory {} of {}".format(directoryCount, numDirectories))
-            
+            contentCount += 1
+            progressBar.progress(contentCount)
+            self.log(Level.INFO, "Processing item {} of {}".format(contentCount, numContents))
             # Ignore false positives
-            if not directory.isDir():
+            if not content.isDir():
                 continue
+            # XXX (ricardoapl) Where the (real) analysis happens
+            self._process(content)
 
-            # Where the (real) analysis happens
-            self._processContent(directory)
-            
         # Once we are done, post a message to the ingest messages inbox
         messageType = IngestMessage.MessageType.DATA
         messageSource = W10FaceMessengerIngestModuleFactory.moduleName
-        messageSubject = "Finished analysis! Please see <<Reports>>"
+        messageSubject = "Finished analysis! Please see the results tree."
         message = IngestMessage.createMessage(messageType, messageSource, messageSubject)
         IngestServices.getInstance().postMessage(message)
         return IngestModule.ProcessResult.OK
-
-    def _processContent(self, directory):
-        
-        # Create temporary directory to extract content to
-        caseTempDirectory = Case.getCurrentCase().getTempDirectory()
-        tempDirectoryName = str(directory.getId())
-        tempDirectory = os.path.join(caseTempDirectory, tempDirectoryName)
-        
-        self.log(Level.INFO, "Creating temporary directory " + tempDirectory)
-        os.mkdir(tempDirectory)
-
-        self._extractContent(directory, tempDirectory)
-        self._analyzeContent(tempDirectory)
-
-    # Extract data from Autopsy into filesystem for later analysis
+    
     # The 'content' object being passed in is of type org.sleuthkit.datamodel.Content
-    # See http://sleuthkit.org/sleuthkit/docs/jni-docs/4.9.0//classorg_1_1sleuthkit_1_1datamodel_1_1_abstract_content.html
-    def _extractContent(self, content, path):
+    # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
+    # The 'content' object is assumed to be a Facebook Messenger (Beta) AppData directory with name 'Facebook.FacebookMessenger_8xx8rvfyw5nnt'
+    def _process(self, content):
+        caseTempDirectory = Case.getCurrentCase().getTempDirectory()
+        dataSourceId = content.getDataSource().getId()
+        parentPath = content.getParentPath()
+        # Remove leading slash otherwise its considered an absolute path and all previous components are thrown away
+        # See https://docs.python.org/3/library/os.path.html#os.path.join
+        parentPath = parentPath.replace("/", "\\")[1:]
+        contentName = content.getName()
+
+        # Create temporary directory to extract content to
+        tempPathToDataSource = os.path.join(caseTempDirectory, str(dataSourceId))
+        tempPathToParent = os.path.join(tempPathToDataSource, parentPath)
+        tempPathToContent = os.path.join(tempPathToParent, contentName)
+        self.log(Level.INFO, "Creating temporary directory => " + tempPathToContent)
+        os.makedirs(tempPathToContent)  # XXX (ricardoapl) Might want to wrap inside a try/except along with _extract()
+
+        self._extract(content, tempPathToContent)
+        self._analyze(content, tempPathToContent)
+
+    # The 'content' object being passed in is of type org.sleuthkit.datamodel.Content
+    # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
+    def _extract(self, content, path):
         children = content.getChildren()
         for child in children:
             childName = child.getName()
+            childPath = os.path.join(path, childName)
             if childName == "." or childName == "..":
                 continue
             elif child.isFile():
-                childPath = os.path.join(path, childName)
                 ContentUtils.writeToFile(child, File(childPath))
             elif child.isDir():
-                childPath = os.path.join(path, childName)
                 os.mkdir(childPath)
-                self._extractContent(child, childPath)
+                self._extract(child, childPath)
 
-    # XXX (ricardoapl) We assume that path has been previously populated with user profile directories
-    def _analyzeContent(self, path):
+    # The 'content' object being passed in is of type org.sleuthkit.datamodel.Content
+    # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
+    # The 'content' object is assumed to be a Facebook Messenger (Beta) AppData directory with name 'Facebook.FacebookMessenger_8xx8rvfyw5nnt'
+    def _analyze(self, content, path):
+        # W10-FaceMessenger executable must point to a user profile directory
+        # 'path' should resemble '...\autopsy\cases\<Case>\Temp\<DataSourceId>\Users\<Username>\AppData\Local\Packages\Facebook.FacebookMessenger_8xx8rvfyw5nnt'
+        # So we ought to remove '\AppData\Local\Packages\Facebook.FacebookMessenger_8xx8rvfyw5nnt' from it
+        pathParts = path.split("\\")
+        pathToUserProfile = "\\".join(pathParts[:-4])
 
-        # Ignore false positives
-        profiles = [directory for directory in os.listdir(path) if os.path.isdir(os.path.join(path, directory))]
+        # We use ExecUtil because it will deal with the user cancelling the job
+        self.log(Level.INFO, "Running => {} --input {} --output {} --format csv".format(self.EXE_PATH, pathToUserProfile, pathToUserProfile))
+        cmd = ArrayList()
+        cmd.add(self.EXE_PATH)
+        cmd.add("--input")
+        cmd.add(pathToUserProfile)
+        cmd.add("--output")
+        cmd.add(pathToUserProfile)
+        cmd.add("--format")
+        cmd.add("csv")
+        # TODO (ricardoapl) Add CSV delimiter according to module settings (tell user he might get varying degrees of success)
+        processBuilder = ProcessBuilder(cmd)
+        ExecUtil.execute(processBuilder, DataSourceIngestModuleProcessTerminator(self.context))
+
+        # If W10-FaceMessenger executable was successful it should have generated a report directory
+        pathToReport = os.path.join(pathToUserProfile, "report")
+        self._populateBlackboard(content, pathToReport)
+
+    # The 'content' object being passed in is of type org.sleuthkit.datamodel.Content
+    # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
+    # The 'content' object is assumed to be a Facebook Messenger (Beta) AppData directory with name 'Facebook.FacebookMessenger_8xx8rvfyw5nnt'
+    def _populateBlackboard(self, content, path):
+        self._populateBlackboardContacts(content, path)
+        self._populateBlackboardMessages(content, path)
+        self._populateBlackboardCachedImages(content, path)
+
+    # The 'content' object being passed in is of type org.sleuthkit.datamodel.Content
+    # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
+    # The 'content' object is assumed to be a Facebook Messenger (Beta) AppData directory with name 'Facebook.FacebookMessenger_8xx8rvfyw5nnt'
+    def _populateBlackboardContacts(self, content, path):
+        pathToContactsCSV = os.path.join(path, "contacts.csv")
+        if not os.path.exists(pathToContactsCSV):
+            self.log(Level.INFO, "Unable to find contacts .csv report")
+            return
+
+        # We assume there exists a msys database from which the report was produced
+        fileManager = Case.getCurrentCase().getServices().getFileManager()
+        dataSource = content.getDataSource()
+        fileName = "msys_%.db"
+        dirName = os.path.join(content.getParentPath(), content.getName())
+        contents = fileManager.findFiles(dataSource, fileName, dirName)
+        if contents.isEmpty():
+            self.log(Level.INFO, "Unable to find msys database")
+            return
+        # Expect a single match so retrieve the first (and only) file
+        msysFile = contents.get(0)
+
+        artifactTypeName = "FB_CONTACTS"
+        artifactDisplayName = "Contacts"
+        contactArtifactType = self._createArtifactType(artifactTypeName, artifactDisplayName)
+
+        with open(pathToContactsCSV, "r") as csvfile:  # Python 2.x doesn't allow 'encoding' keyword argument
+            contacts = csv.reader(csvfile)  # TODO (ricardoapl) Add CSV delimiter according to module settings
+            isFirstEntry = True
+            for contact in contacts:
+                # We ignore the CSV header row (i.e. first row)
+                if isFirstEntry:
+                    isFirstEntry = False
+                    continue
+                self._addNewArtifactContact(msysFile, contact, contactArtifactType)
+    
+    # The 'content' object being passed in is of type org.sleuthkit.datamodel.Content
+    # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
+    # The 'content' object is assumed to be a Facebook Messenger (Beta) SQLite database file with name similar to 'msys_1234567890.db'
+    def _addNewArtifactContact(self, content, contact, artifactType):
+        source = W10FaceMessengerIngestModuleFactory.moduleName
+        facebookId, picSmall, name, phone, email, picLarge = contact
+
+        attributeFacebookId = BlackboardAttribute(self.ATTRIBUTE_TYPE_FB_ID, source, facebookId)
+        attributeName = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_NAME, source, name)
+        attributePhone = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_PHONE_NUMBER, source, phone)
+        attributeEmail = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_EMAIL, source, email)
+        attributePicSmall = BlackboardAttribute(self.ATTRIBUTE_TYPE_FB_PROFILE_PIC_SMALL, source, picSmall)
+        attributePicLarge = BlackboardAttribute(self.ATTRIBUTE_TYPE_FB_PROFILE_PIC_LARGE, source, picLarge)
+
+        artifact = content.newArtifact(artifactType.getTypeID())
+        artifact.addAttribute(attributeFacebookId)
+        artifact.addAttribute(attributeName)
+        artifact.addAttribute(attributePhone)
+        artifact.addAttribute(attributeEmail)
+        artifact.addAttribute(attributePicSmall)
+        artifact.addAttribute(attributePicLarge)
+    
+    # The 'content' object being passed in is of type org.sleuthkit.datamodel.Content
+    # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
+    # The 'content' object is assumed to be a Facebook Messenger (Beta) AppData directory with name 'Facebook.FacebookMessenger_8xx8rvfyw5nnt'
+    def _populateBlackboardMessages(self, content, path):
+        pathToThreads = os.path.join(path, "messages")
+        threads = os.listdir(pathToThreads)
+        if not threads:
+            self.log(Level.INFO, "Unable to find messages .csv report(s)")
+            return
+
+        # We assume there exists a msys database from which the report was produced
+        fileManager = Case.getCurrentCase().getServices().getFileManager()
+        dataSource = content.getDataSource()
+        fileName = "msys_%.db"
+        dirName = os.path.join(content.getParentPath(), content.getName())
+        contents = fileManager.findFiles(dataSource, fileName, dirName)
+        if contents.isEmpty():
+            self.log(Level.INFO, "Unable to find msys database")
+            return
+        # Expect a single match so retrieve the first (and only) file
+        msysFile = contents.get(0)
         
-        for profile in profiles:
+        artifactTypeName = "FB_MESSAGES"
+        artifactDisplayName = "Messages"
+        messageArtifactType = self._createArtifactType(artifactTypeName, artifactDisplayName)
 
-            caseReportDirectory = Case.getCurrentCase().getReportDirectory()
-            reportDirectoryName = os.path.basename(path) + "-" + profile
-            reportDirectory = os.path.join(caseReportDirectory, reportDirectoryName)
-            os.mkdir(reportDirectory)
-            profileDirectory = os.path.join(path, profile)
+        for thread in threads:
+            pathToMessagesCSV = os.path.join(pathToThreads, thread)
+            with open(pathToMessagesCSV, "r") as csvfile:
+                messages = csv.reader(csvfile)  # TODO (ricardoapl) Add CSV delimiter according to module settings
+                isFirstEntry = True
+                for message in messages:
+                    # We ignore the CSV header row (i.e. first row)
+                    if isFirstEntry:
+                        isFirstEntry = False
+                        continue
+                    self._addNewArtifactMessage(msysFile, message, messageArtifactType)
 
-            # Run the W10-FaceMessenger EXE, saving output to reportDirectory
-            # We use ExecUtil because it will deal with the user cancelling the job
-            self.log(Level.INFO, "Running W10-FaceMessenger on profile " + reportDirectoryName)
-            cmd = ArrayList()
-            cmd.add(self.pathToEXE)
-            cmd.add("--input")
-            cmd.add(profileDirectory)
-            cmd.add("--output")
-            cmd.add(reportDirectory)
-            
-            # TODO (ricardoapl) Add depth argument according to module settings
+    # The 'content' object being passed in is of type org.sleuthkit.datamodel.Content
+    # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
+    # The 'content' object is assumed to be a Facebook Messenger (Beta) SQLite database file with name similar to 'msys_1234567890.db'
+    def _addNewArtifactMessage(self, content, message, artifactType):
+        source = W10FaceMessengerIngestModuleFactory.moduleName
+        # XXX (ricardoapl) Fix indexes with new W10-FaceMessenger release
+        senderId = message[3]
+        senderName = message[4]
+        # TODO (ricardoapl) dateTime = message[1]
+        text = message[5]
+        playableURL = message[7]
 
-            processBuilder = ProcessBuilder(cmd)
-            ExecUtil.execute(processBuilder, DataSourceIngestModuleProcessTerminator(self.context))
-            
-            # TODO (ricardoapl) Remove directories for which no report was produced
+        attributeSenderId = BlackboardAttribute(self.ATTRIBUTE_TYPE_FB_ID_FROM, source, senderId)
+        attributeSenderName = BlackboardAttribute(self.ATTRIBUTE_TYPE_FB_NAME_FROM, source, senderName)
+        # TODO (ricardoapl) attributeDateTime = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_DATETIME, source, dateTime)
+        attributeText = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_TEXT, source, text)
+        attributeContentURL = BlackboardAttribute(self.ATTRIBUTE_TYPE_FB_URL_CONTENT, source, playableURL)
 
-            # Add the report to the case, so it shows up in the tree
-            # Do not add report to the case tree if the ingest is cancelled before finish
-            if not self.context.dataSourceIngestIsCancelled():
-                reportFileName = os.path.join(reportDirectory, "report\\report.html")
-                reportModuleName = W10FaceMessengerIngestModuleFactory.moduleName
-                reportName = "W10-FaceMessenger " + reportDirectoryName
-                Case.getCurrentCase().addReport(reportFileName, reportModuleName, reportName)
-            else:
-                reportFile = File(reportFileName)
-                if reportFile.exists():
-                    if not reportFile.delete():
-                        self.log(LEVEL.warning, "Error deleting the incomplete report file")
+        artifact = content.newArtifact(artifactType.getTypeID())
+        artifact.addAttribute(attributeSenderId)
+        artifact.addAttribute(attributeSenderName)
+        # TODO (ricardoapl) artifact.addAttribute(attributeDateTime)
+        artifact.addAttribute(attributeText)
+        artifact.addAttribute(attributeContentURL)
+    
+    # The 'content' object being passed in is of type org.sleuthkit.datamodel.Content
+    # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
+    # The 'content' object is assumed to be a Facebook Messenger (Beta) AppData directory with name 'Facebook.FacebookMessenger_8xx8rvfyw5nnt'
+    def _populateBlackboardCachedImages(self, content, path):
+        pathToCachedImagesCSV = os.path.join(path, "report_images.csv")
+        if not os.path.exists(pathToCachedImagesCSV):
+            self.log(Level.INFO, "Unable to find cached images .csv report")
+            return
+
+        artifactTypeName = "FB_CACHED_IMAGES"
+        artifactDisplayName = "Cached Images (hindsight.exe)"
+        cachedImageArtifactType = self._createArtifactType(artifactTypeName, artifactDisplayName)
+
+        with open(pathToCachedImagesCSV, "r") as csvfile:  # Python 2.x doesn't allow 'encoding' keyword argument
+            images = csv.reader(csvfile)  # TODO (ricardoapl) Add CSV delimiter according to module settings
+            isFirstEntry = True
+            for image in images:
+                # We ignore the CSV header row (i.e. first row)
+                if isFirstEntry:
+                    isFirstEntry = False
+                    continue
+                sourceContent = self._searchSourceContent(content, image)
+                self._addNewArtifactCachedImage(sourceContent, image, cachedImageArtifactType)
+
+    # The 'content' object being passed in is of type org.sleuthkit.datamodel.Content
+    # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
+    # The 'content' object is assumed to be a Facebook Messenger (Beta) AppData directory with name 'Facebook.FacebookMessenger_8xx8rvfyw5nnt'
+    def _searchSourceContent(self, content, csvrow):
+        location, origin, timestamp, url = csvrow
+        
+        # 'location' should resemble '...\Temp\<DataSourceId>\<Username>\AppData\Local\Packages\Facebook.FacebookMessenger_8xx8rvfyw5nnt\LocalState\Partitions\8bda49db...'
+        # We just want to keep what's after <DataSourceId>
+        locationParts = location.split("\\")
+        sourceLocation = "\\".join(locationParts[-8:])
+
+        dirName = os.path.join(sourceLocation, "Cache")
+        # Autopsy expects forward slashes ('/') in paths, so we have to replace any occurance of backward slashes ('\\')
+        dirName = dirName.replace("\\", "/")
+
+        # 'origin' should resemble '<filename> [<offset>]'
+        # We just want <filename> (not the <offset>)
+        fileName = origin.split(" ")[0]
+
+        fileManager = Case.getCurrentCase().getServices().getFileManager()
+        dataSource = content.getDataSource()
+        contents = fileManager.findFiles(dataSource, fileName, dirName)
+        if contents.isEmpty():
+            self.log(Level.INFO, "Unable to find source of cached image")
+            # TODO (ricardoapl) We should return something appropriate (or raise an exception)
+            return
+        # Expect a single match so retrieve the first (and only) file
+        sourceContent = contents.get(0)
+        return sourceContent
+
+    # The 'content' object being passed in is of type org.sleuthkit.datamodel.Content
+    # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
+    def _addNewArtifactCachedImage(self, content, image, artifactType):
+        source = W10FaceMessengerIngestModuleFactory.moduleName
+        location, origin, timestamp, url = image  # XXX (ricardoapl) Unpacking the whole list seems overkill
+
+        attributeUrl = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_URL, source, url)
+
+        artifact = content.newArtifact(artifactType.getTypeID())
+        artifact.addAttribute(attributeUrl)
+
+    # Wrapper method for org.sleuthkit.datamodel.Blackboard.getOrAddArtifactType
+    # See http://sleuthkit.org/sleuthkit/docs/jni-docs/4.9.0/classorg_1_1sleuthkit_1_1datamodel_1_1_blackboard.html#ab1d9c5b4bf7662e80a112b5786d1cdc6
+    def _createArtifactType(self, typeName, displayName):
+        blackboard = Case.getCurrentCase().getServices().getBlackboard()
+        try:
+            artifactType = blackboard.getOrAddArtifactType(typeName, "Messenger (Beta) " + displayName)
+        except BlackboardException:
+            self.log(Level.INFO, "There was a problem getting or adding the artifact type" + typeName)
+        return artifactType
