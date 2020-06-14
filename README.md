@@ -21,7 +21,7 @@ Every Python module in Autopsy gets its own folder. This reduces naming collisio
 To install W10-FaceMessenger @ Autopsy you must:
 1. Create a folder named `w10-facemessenger` inside `python_modules`
 2. Place `ingest_module.py` into this new folder
-3. Place the folder containing the binary distribution of W10-FaceMessenger into this same folder
+3. Place the W10-FaceMessenger executable into this same folder
 
 The final result should resemble:
 
@@ -29,7 +29,7 @@ The final result should resemble:
 python_modules/
 └── w10-facemessenger
     ├── ingest_module.py
-    └── w10-facemessenger
+    └── w10-facemessenger.exe
 ```
 
 ## Authors

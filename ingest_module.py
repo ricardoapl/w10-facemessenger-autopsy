@@ -69,9 +69,9 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
         self.context = context
         if not PlatformUtil.isWindowsOS():
             raise IngestModuleException("Not running on Windows")
-        self.EXE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), r"w10-facemessenger\w10-facemessenger.exe")
+        self.EXE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "w10-facemessenger.exe")
         if not os.path.exists(self.EXE_PATH):
-            raise IngestModuleException("W10-FaceMessenger was not found in module folder")
+            raise IngestModuleException("w10-facemessenger.exe was not found in module folder")
         # Create custom artifact attribute types
         self._startUpAttributeTypes()
 
@@ -198,7 +198,7 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
     # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
     # The 'content' object is assumed to be a Facebook Messenger (Beta) AppData directory with name 'Facebook.FacebookMessenger_8xx8rvfyw5nnt'
     def _analyze(self, content, path):
-        # W10-FaceMessenger executable must point to a user profile directory
+        # w10-facemessenger.exe must point to a user profile directory
         # 'path' should resemble '...\autopsy\cases\<Case>\Temp\<DataSourceId>\Users\<Username>\AppData\Local\Packages\Facebook.FacebookMessenger_8xx8rvfyw5nnt'
         # So we ought to remove '\AppData\Local\Packages\Facebook.FacebookMessenger_8xx8rvfyw5nnt' from it
         pathParts = path.split("\\")
@@ -218,7 +218,7 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
         processBuilder = ProcessBuilder(cmd)
         ExecUtil.execute(processBuilder, DataSourceIngestModuleProcessTerminator(self.context))
 
-        # If W10-FaceMessenger executable was successful it should have generated a report directory
+        # If w10-facemessenger.exe was successful it should have generated a report directory
         pathToReport = os.path.join(pathToUserProfile, "report")
         self._populateBlackboard(content, pathToReport)
 
