@@ -330,12 +330,11 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
     # The 'content' object is assumed to be a Facebook Messenger (Beta) SQLite database file with name similar to 'msys_1234567890.db'
     def _addNewArtifactMessage(self, content, message, artifactType):
         source = W10FaceMessengerIngestModuleFactory.moduleName
-        # XXX (ricardoapl) Fix indexes with new W10-FaceMessenger release
-        senderId = message[3]
-        senderName = message[4]
+        senderId = message[2]
+        senderName = message[3]
         # TODO (ricardoapl) dateTime = message[1]
-        text = message[5]
-        playableURL = message[7]
+        text = message[4]
+        playableURL = message[6]
 
         attributeSenderId = BlackboardAttribute(self.ATTRIBUTE_TYPE_FB_ID_FROM, source, senderId)
         attributeSenderName = BlackboardAttribute(self.ATTRIBUTE_TYPE_FB_NAME_FROM, source, senderName)
