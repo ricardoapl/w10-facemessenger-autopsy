@@ -69,41 +69,33 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
     # See http://sleuthkit.org/autopsy/docs/api-docs/latest/classorg_1_1sleuthkit_1_1autopsy_1_1ingest_1_1_ingest_job_context.html
     def startUp(self, context):
         self.context = context
+
         if not PlatformUtil.isWindowsOS():
             raise IngestModuleException("Not running on Windows")
         self.EXE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "w10-facemessenger.exe")
         if not os.path.exists(self.EXE_PATH):
             raise IngestModuleException("w10-facemessenger.exe was not found in module folder")
+
         # Create custom artifact attribute types
         self._startUpAttributeTypes()
 
     def _startUpAttributeTypes(self):
         # Custom attribute types for <<Contacts>>
-        attributeName = "FB_ID"
-        attributeValue = BlackboardAttribute.TSK_BLACKBOARD_ATTRIBUTE_VALUE_TYPE.STRING
-        attributeDisplayName = "Facebook ID"
-        self.ATTRIBUTE_TYPE_FB_ID = self._createAttributeType(attributeName, attributeValue, attributeDisplayName)
-
         attributeName = "FB_PROFILE_PIC"
         attributeValue = BlackboardAttribute.TSK_BLACKBOARD_ATTRIBUTE_VALUE_TYPE.STRING
-        attributeDisplayName = "Profile Picture URL (Small)"
-        self.ATTRIBUTE_TYPE_FB_PROFILE_PIC_SMALL = self._createAttributeType(attributeName, attributeValue, attributeDisplayName)
-
-        attributeName = "FB_PROFILE_PIC_LARGE"
-        attributeValue = BlackboardAttribute.TSK_BLACKBOARD_ATTRIBUTE_VALUE_TYPE.STRING
-        attributeDisplayName = "Profile Picture URL (Large)"
-        self.ATTRIBUTE_TYPE_FB_PROFILE_PIC_LARGE = self._createAttributeType(attributeName, attributeValue, attributeDisplayName)
+        attributeDisplayName = "Profile Picture URL"
+        self.ATTRIBUTE_TYPE_FB_PROFILE_PIC = self._createAttributeType(attributeName, attributeValue, attributeDisplayName)
 
         # Custom attribute types for <<Messages>>
         attributeName = "FB_ID_FROM"
         attributeValue = BlackboardAttribute.TSK_BLACKBOARD_ATTRIBUTE_VALUE_TYPE.STRING
-        attributeDisplayName = "From Facebook ID"
-        self.ATTRIBUTE_TYPE_FB_ID_FROM = self._createAttributeType(attributeName, attributeValue, attributeDisplayName)
+        attributeDisplayName = "From User ID"
+        self.ATTRIBUTE_TYPE_FB_USER_ID_FROM = self._createAttributeType(attributeName, attributeValue, attributeDisplayName)
 
         attributeName = "FB_NAME_FROM"
         attributeValue = BlackboardAttribute.TSK_BLACKBOARD_ATTRIBUTE_VALUE_TYPE.STRING
-        attributeDisplayName = "From Name"
-        self.ATTRIBUTE_TYPE_FB_NAME_FROM = self._createAttributeType(attributeName, attributeValue, attributeDisplayName)
+        attributeDisplayName = "From Display Name"
+        self.ATTRIBUTE_TYPE_FB_DISPLAY_NAME_FROM = self._createAttributeType(attributeName, attributeValue, attributeDisplayName)
 
         attributeName = "FB_CONTENT_URL"
         attributeValue = BlackboardAttribute.TSK_BLACKBOARD_ATTRIBUTE_VALUE_TYPE.STRING
@@ -272,22 +264,25 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
     # The 'content' object is assumed to be a Facebook Messenger (Beta) SQLite database file with name similar to 'msys_1234567890.db'
     def _addNewArtifactContact(self, content, contact, artifactType):
         source = W10FaceMessengerIngestModuleFactory.moduleName
-        facebookId, picSmall, name, phone, email, picLarge = contact
+        
+        facebookId = contact[0]
+        displayName = contact[2]
+        phone = contact[3]
+        email = contact[4]
+        profilePic = contact[5]
 
-        attributeFacebookId = BlackboardAttribute(self.ATTRIBUTE_TYPE_FB_ID, source, facebookId)
-        attributeName = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_NAME, source, name)
+        attributeFacebookId = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_USER_ID, source, facebookId)
+        attributeDisplayName = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_DISPLAY_NAME, source, displayName)
         attributePhone = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_PHONE_NUMBER, source, phone)
         attributeEmail = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_EMAIL, source, email)
-        attributePicSmall = BlackboardAttribute(self.ATTRIBUTE_TYPE_FB_PROFILE_PIC_SMALL, source, picSmall)
-        attributePicLarge = BlackboardAttribute(self.ATTRIBUTE_TYPE_FB_PROFILE_PIC_LARGE, source, picLarge)
+        attributeProfilePic = BlackboardAttribute(self.ATTRIBUTE_TYPE_FB_PROFILE_PIC, source, profilePic)
 
         artifact = content.newArtifact(artifactType.getTypeID())
         artifact.addAttribute(attributeFacebookId)
-        artifact.addAttribute(attributeName)
+        artifact.addAttribute(attributeDisplayName)
         artifact.addAttribute(attributePhone)
         artifact.addAttribute(attributeEmail)
-        artifact.addAttribute(attributePicSmall)
-        artifact.addAttribute(attributePicLarge)
+        artifact.addAttribute(attributeProfilePic)
     
     # The 'content' object being passed in is of type org.sleuthkit.datamodel.Content
     # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
@@ -348,8 +343,8 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
 
         attributeThreadId = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_THREAD_ID, source, threadId)
         attributeDateTime = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_DATETIME, source, timestamp)
-        attributeSenderId = BlackboardAttribute(self.ATTRIBUTE_TYPE_FB_ID_FROM, source, senderId)
-        attributeSenderName = BlackboardAttribute(self.ATTRIBUTE_TYPE_FB_NAME_FROM, source, senderName)
+        attributeSenderId = BlackboardAttribute(self.ATTRIBUTE_TYPE_FB_USER_ID_FROM, source, senderId)
+        attributeSenderName = BlackboardAttribute(self.ATTRIBUTE_TYPE_FB_DISPLAY_NAME_FROM, source, senderName)
         attributeText = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_TEXT, source, text)
         attributeContentURL = BlackboardAttribute(self.ATTRIBUTE_TYPE_FB_URL_CONTENT, source, playableURL)
 
