@@ -1,6 +1,8 @@
 import os
 import inspect
 import csv
+import datetime
+import calendar
 
 import java.util.ArrayList as ArrayList
 from java.io import File
@@ -139,7 +141,7 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
             # Check if the user pressed cancel while we were busy
             if self.context.isJobCancelled():
                 return IngestModule.ProcessResult.OK
-            # Report work progress to end user
+            # Report progress to end user
             contentCount += 1
             progressBar.progress(contentCount)
             self.log(Level.INFO, "Processing item {} of {}".format(contentCount, numContents))
@@ -330,25 +332,35 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
     # The 'content' object is assumed to be a Facebook Messenger (Beta) SQLite database file with name similar to 'msys_1234567890.db'
     def _addNewArtifactMessage(self, content, message, artifactType):
         source = W10FaceMessengerIngestModuleFactory.moduleName
+        
+        threadId = message[0]
+        dateString = message[1]
         senderId = message[2]
         senderName = message[3]
-        # TODO (ricardoapl) dateTime = message[1]
         text = message[4]
         playableURL = message[6]
 
+        formatString = "%Y-%m-%d %H:%M:%S"
+        # We assume 'dateString' is in UTC/GMT
+        dateTime = datetime.datetime.strptime(dateString, formatString)
+        timeStruct = dateTime.timetuple()
+        timestamp = int(calendar.timegm(timeStruct))
+
+        attributeThreadId = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_THREAD_ID, source, threadId)
+        attributeDateTime = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_DATETIME, source, timestamp)
         attributeSenderId = BlackboardAttribute(self.ATTRIBUTE_TYPE_FB_ID_FROM, source, senderId)
         attributeSenderName = BlackboardAttribute(self.ATTRIBUTE_TYPE_FB_NAME_FROM, source, senderName)
-        # TODO (ricardoapl) attributeDateTime = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_DATETIME, source, dateTime)
         attributeText = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_TEXT, source, text)
         attributeContentURL = BlackboardAttribute(self.ATTRIBUTE_TYPE_FB_URL_CONTENT, source, playableURL)
 
         artifact = content.newArtifact(artifactType.getTypeID())
+        artifact.addAttribute(attributeThreadId)
+        artifact.addAttribute(attributeDateTime)
         artifact.addAttribute(attributeSenderId)
         artifact.addAttribute(attributeSenderName)
-        # TODO (ricardoapl) artifact.addAttribute(attributeDateTime)
         artifact.addAttribute(attributeText)
         artifact.addAttribute(attributeContentURL)
-    
+
     # The 'content' object being passed in is of type org.sleuthkit.datamodel.Content
     # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
     # The 'content' object is assumed to be a Facebook Messenger (Beta) AppData directory with name 'Facebook.FacebookMessenger_8xx8rvfyw5nnt'
@@ -359,7 +371,7 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
             return
 
         artifactTypeName = "FB_CACHED_IMAGES"
-        artifactDisplayName = "Cached Images (hindsight.exe)"
+        artifactDisplayName = "Cached Images"
         cachedImageArtifactType = self._createArtifactType(artifactTypeName, artifactDisplayName)
 
         with open(pathToCachedImagesCSV, "r") as csvfile:  # Python 2.x doesn't allow 'encoding' keyword argument
@@ -370,13 +382,13 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
                 if isFirstEntry:
                     isFirstEntry = False
                     continue
-                sourceContent = self._searchSourceContent(content, image)
+                sourceContent = self._getImageSourceContent(content, image)
                 self._addNewArtifactCachedImage(sourceContent, image, cachedImageArtifactType)
 
     # The 'content' object being passed in is of type org.sleuthkit.datamodel.Content
     # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
     # The 'content' object is assumed to be a Facebook Messenger (Beta) AppData directory with name 'Facebook.FacebookMessenger_8xx8rvfyw5nnt'
-    def _searchSourceContent(self, content, csvrow):
+    def _getImageSourceContent(self, content, csvrow):
         location, origin, timestamp, url = csvrow
         
         # 'location' should resemble '...\Temp\<DataSourceId>\<Username>\AppData\Local\Packages\Facebook.FacebookMessenger_8xx8rvfyw5nnt\LocalState\Partitions\8bda49db...'
@@ -385,7 +397,7 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
         sourceLocation = "\\".join(locationParts[-8:])
 
         dirName = os.path.join(sourceLocation, "Cache")
-        # Autopsy expects forward slashes ('/') in paths, so we have to replace any occurance of backward slashes ('\\')
+        # Autopsy expects forward slashes ('/') in paths so we have to replace any occurance of backward slashes ('\\')
         dirName = dirName.replace("\\", "/")
 
         # 'origin' should resemble '<filename> [<offset>]'
