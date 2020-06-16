@@ -208,7 +208,7 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
         cmd.add(pathToUserProfile)
         cmd.add("--format")
         cmd.add("csv")
-        # TODO (ricardoapl) Add CSV delimiter according to module settings (tell user he might get varying degrees of success)
+        # TODO (ricardoapl) Add CSV delimiter ('~', '^')
         processBuilder = ProcessBuilder(cmd)
         ExecUtil.execute(processBuilder, DataSourceIngestModuleProcessTerminator(self.context))
 
@@ -250,13 +250,9 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
         contactArtifactType = self._createArtifactType(artifactTypeName, artifactDisplayName)
 
         with open(pathToContactsCSV, "r") as csvfile:  # Python 2.x doesn't allow 'encoding' keyword argument
-            contacts = csv.reader(csvfile)  # TODO (ricardoapl) Add CSV delimiter according to module settings
-            isFirstEntry = True
+            contacts = csv.reader(csvfile)  # TODO (ricardoapl) Add CSV delimiter ('~', '^')
+            next(contacts)  # We ignore header row (i.e. first row)
             for contact in contacts:
-                # We ignore the CSV header row (i.e. first row)
-                if isFirstEntry:
-                    isFirstEntry = False
-                    continue
                 self._addNewArtifactContact(msysFile, contact, contactArtifactType)
     
     # The 'content' object being passed in is of type org.sleuthkit.datamodel.Content
@@ -313,14 +309,11 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
         for thread in threads:
             pathToMessagesCSV = os.path.join(pathToThreads, thread)
             with open(pathToMessagesCSV, "r") as csvfile:
-                messages = csv.reader(csvfile)  # TODO (ricardoapl) Add CSV delimiter according to module settings
-                isFirstEntry = True
+                messages = csv.reader(csvfile)  # TODO (ricardoapl) Add CSV delimiter ('~', '^')
+                next(messages)  # We ignore header row (i.e. first row)
                 for message in messages:
-                    # We ignore the CSV header row (i.e. first row)
-                    if isFirstEntry:
-                        isFirstEntry = False
-                        continue
-                    self._addNewArtifactMessage(msysFile, message, messageArtifactType)
+                    artifact = self._addNewArtifactMessage(msysFile, message, messageArtifactType)
+                    self._addCommunicationInfo(msysFile, message, artifact)
 
     # The 'content' object being passed in is of type org.sleuthkit.datamodel.Content
     # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
@@ -370,21 +363,17 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
         cachedImageArtifactType = self._createArtifactType(artifactTypeName, artifactDisplayName)
 
         with open(pathToCachedImagesCSV, "r") as csvfile:  # Python 2.x doesn't allow 'encoding' keyword argument
-            images = csv.reader(csvfile)  # TODO (ricardoapl) Add CSV delimiter according to module settings
-            isFirstEntry = True
+            images = csv.reader(csvfile)  # TODO (ricardoapl) Add CSV delimiter ('~', '^')
+            next(images)  # We ignore header row (i.e. first row)
             for image in images:
-                # We ignore the CSV header row (i.e. first row)
-                if isFirstEntry:
-                    isFirstEntry = False
-                    continue
-                sourceContent = self._getImageSourceContent(content, image)
+                sourceContent = self._getCachedImageSourceContent(content, image)
                 self._addNewArtifactCachedImage(sourceContent, image, cachedImageArtifactType)
 
     # The 'content' object being passed in is of type org.sleuthkit.datamodel.Content
     # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
     # The 'content' object is assumed to be a Facebook Messenger (Beta) AppData directory with name 'Facebook.FacebookMessenger_8xx8rvfyw5nnt'
-    def _getImageSourceContent(self, content, csvrow):
-        location, origin, timestamp, url = csvrow
+    def _getCachedImageSourceContent(self, content, csvImage):
+        location, origin, timestamp, url = csvImage
         
         # 'location' should resemble '...\Temp\<DataSourceId>\<Username>\AppData\Local\Packages\Facebook.FacebookMessenger_8xx8rvfyw5nnt\LocalState\Partitions\8bda49db...'
         # We just want to keep what's after <DataSourceId>
