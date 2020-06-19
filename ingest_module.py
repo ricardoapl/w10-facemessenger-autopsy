@@ -333,7 +333,7 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
             return
         
         # We assume there exists a database file from which the report was produced
-        dbFile = self._getUserDbFile(content, "%")
+        dbFile = self._getUserDbFile(content, "%")  # TODO (ricardoapl) Change userId
         
         with open(pathToLostFoundCSV, "r") as csvfile:  # Python 2.x doesn't allow 'encoding' keyword argument
             lines = csvfile.readlines()
@@ -377,7 +377,7 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
             return
 
         # We assume there exists a database file from which the report was produced
-        dbFile = self._getUserDbFile(content, "%")
+        dbFile = self._getUserDbFile(content, "%")  # TODO (ricardoapl) Change userId
 
         sleuthkitCase = Case.getCurrentCase().getSleuthkitCase()
         moduleName = W10FaceMessengerIngestModuleFactory.moduleName
@@ -450,7 +450,7 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
             return
 
         # We assume there exists a database file from which the report was produced
-        dbFile = self._getUserDbFile(content, "%")
+        dbFile = self._getUserDbFile(content, "%")  # TODO (ricardoapl) Change userId
 
         participants = self._getParticipants(pathToConversationsCSV)
 
