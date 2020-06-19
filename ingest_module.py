@@ -1,5 +1,6 @@
 import os
 import inspect
+import io
 import csv
 import datetime
 import calendar
@@ -74,6 +75,7 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
         self.EXE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "w10-facemessenger.exe")
         if not os.path.exists(self.EXE_PATH):
             raise IngestModuleException("w10-facemessenger.exe was not found in module folder")
+        self.CSV_DELIMITER = "\x1E"  # ASCII non-printing character 30 (Record Separator)
         self._startUpAttributeTypes()
         self._startUpArtifactTypes()
 
@@ -231,7 +233,8 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
         cmd.add(pathToUserProfile)
         cmd.add("--format")
         cmd.add("csv")
-        # TODO (ricardoapl) Add CSV delimiter ('~', '^')
+        cmd.add("--delimiter")
+        cmd.add(self.CSV_DELIMITER)
         processBuilder = ProcessBuilder(cmd)
         ExecUtil.execute(processBuilder, DataSourceIngestModuleProcessTerminator(self.context))
 
@@ -250,8 +253,8 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
         if not os.path.exists(pathToCachedImagesCSV):
             self.log(Level.INFO, "Unable to find cached images CSV report")
             return
-        with open(pathToCachedImagesCSV, "r") as csvfile:  # Python 2.x doesn't allow 'encoding' keyword argument
-            images = csv.reader(csvfile)  # TODO (ricardoapl) Add CSV delimiter ('~', '^')
+        with io.open(pathToCachedImagesCSV, "r", encoding="utf-8") as csvfile:
+            images = csv.reader(csvfile, delimiter=self.CSV_DELIMITER)
             next(images)  # Ignore header row (i.e. first row)
             for image in images:
                 sourceContent = self._getCachedImageSourceContent(content, image)
@@ -335,7 +338,7 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
         # We assume there exists a database file from which the report was produced
         dbFile = self._getUserDbFile(content, "%")  # TODO (ricardoapl) Change userId
         
-        with open(pathToLostFoundCSV, "r") as csvfile:  # Python 2.x doesn't allow 'encoding' keyword argument
+        with io.open(pathToLostFoundCSV, "r", encoding="utf-8") as csvfile:
             lines = csvfile.readlines()
             records = lines[1:]  # Ignore header row (i.e. first row)
             for record in records:
@@ -386,8 +389,8 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
         selfAccountId = "100047488492327"  # TODO (ricardoapl) Remove hardcoded identifier
         appDbHelper = CommunicationArtifactsHelper(sleuthkitCase, moduleName, srcContent, accountType, accountType, selfAccountId)
 
-        with open(pathToContactsCSV, "r") as csvfile:  # Python 2.x doesn't allow 'encoding' keyword argument
-            contacts = csv.reader(csvfile)  # TODO (ricardoapl) Add CSV delimiter ('~', '^')
+        with io.open(pathToContactsCSV, "r", encoding="utf-8") as csvfile:
+            contacts = csv.reader(csvfile, delimiter=self.CSV_DELIMITER)
             next(contacts)  # Ignore header row (i.e. first row)
             for contact in contacts:
                 self._newArtifactFBContact(dbFile, contact)
@@ -471,8 +474,8 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
             threadId = thread.rsplit(".", 1)[0]  # Files are named after the threads, ignore their extension
             threadParticipants = participants[threadId]
             pathToMessagesCSV = os.path.join(pathToThreads, thread)
-            with open(pathToMessagesCSV, "r") as csvfile:
-                messages = csv.reader(csvfile)  # TODO (ricardoapl) Add CSV delimiter ('~', '^')
+            with io.open(pathToMessagesCSV, "r", encoding="utf-8") as csvfile:
+                messages = csv.reader(csvfile, delimiter=self.CSV_DELIMITER)
                 next(messages)  # Ignore header row (i.e. first row)
                 for message in messages:
                     self._newArtifactFBMessage(dbFile, message)
@@ -480,8 +483,8 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
 
     def _getParticipants(self, path):
         participants = defaultdict(list)
-        with open(path, "r") as csvfile:
-            rows = csv.reader(csvfile)  # TODO (ricardoapl) Add CSV delimiter ('~', '^')
+        with io.open(path, "r", encoding="utf-8") as csvfile:
+            rows = csv.reader(csvfile, delimiter=self.CSV_DELIMITER)
             next(rows)  # Ignore header row (i.e. first row)
             for row in rows:
                 threadId = row[3]
