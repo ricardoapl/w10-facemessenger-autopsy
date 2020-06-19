@@ -119,7 +119,11 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
 
         artifactTypeName = "FB_CACHED_IMAGE"
         artifactDisplayName = "Cached Images"
-        self.ARTIFACT_TYPE_FB_CACHED_IMAGE = self._createArtifactType(artifactTypeName, artifactDisplayName)        
+        self.ARTIFACT_TYPE_FB_CACHED_IMAGE = self._createArtifactType(artifactTypeName, artifactDisplayName)
+
+        artifactTypeName = "FB_LOST_FOUND"
+        artifactDisplayName = "Deleted Database Records"
+        self.ARTIFACT_TYPE_FB_LOST_FOUND = self._createArtifactType(artifactTypeName, artifactDisplayName)
 
     # Wrapper method for org.sleuthkit.datamodel.Blackboard.getOrAddArtifactType
     # See http://sleuthkit.org/sleuthkit/docs/jni-docs/4.9.0/classorg_1_1sleuthkit_1_1datamodel_1_1_blackboard.html#ab1d9c5b4bf7662e80a112b5786d1cdc6
@@ -144,7 +148,7 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
         directory = "Facebook.FacebookMessenger_8xx8rvfyw5nnt"
         parentDirectory = "AppData/Local/Packages"
         contents = fileManager.findFiles(dataSource, directory, parentDirectory)
-    
+
         numContents = len(contents)
         progressBar.switchToDeterminate(numContents)
         contentCount = 0
@@ -169,7 +173,7 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
         message = IngestMessage.createMessage(messageType, messageSource, messageSubject)
         IngestServices.getInstance().postMessage(message)
         return IngestModule.ProcessResult.OK
-    
+
     # The 'content' object being passed in is of type org.sleuthkit.datamodel.Content
     # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
     # The 'content' object is assumed to be a Facebook Messenger (Beta) AppData directory with name 'Facebook.FacebookMessenger_8xx8rvfyw5nnt'
@@ -234,6 +238,7 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
         # If w10-facemessenger.exe was successful it should have generated a report directory
         pathToReport = os.path.join(pathToUserProfile, "report")
         self._analyzeCachedImages(content, pathToReport)
+        self._analyzeLostFound(content, pathToReport)
         self._analyzeContacts(content, pathToReport)
         self._analyzeMessages(content, pathToReport)
 
@@ -257,7 +262,7 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
     # The 'content' object is assumed to be a Facebook Messenger (Beta) AppData directory with name 'Facebook.FacebookMessenger_8xx8rvfyw5nnt'
     def _getCachedImageSourceContent(self, content, image):
         location, origin, timestamp, url = image
-        
+
         # 'location' should resemble '...\Temp\<DataSourceId>\<Username>\AppData\Local\Packages\Facebook.FacebookMessenger_8xx8rvfyw5nnt\LocalState\Partitions\8bda49db...'
         # We just want to keep what's after <DataSourceId>
         locationParts = location.split("\\")
@@ -318,6 +323,42 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
 
         return artifact
 
+    def _analyzeLostFound(self, content, path):
+        pathToLostFoundCSV = os.path.join(path, "report-undark.csv")
+        if not os.path.exists(pathToLostFoundCSV):
+            self.log(Level.INFO, "Unable to find undark CSV report")
+            return
+
+        # We assume there exists a msys database from which the report was produced
+        fileManager = Case.getCurrentCase().getServices().getFileManager()
+        dataSource = content.getDataSource()
+        fileName = "msys_%.db"
+        dirName = os.path.join(content.getParentPath(), content.getName())
+        contents = fileManager.findFiles(dataSource, fileName, dirName)
+        if contents.isEmpty():
+            self.log(Level.INFO, "Unable to find msys database")
+            return
+        # Expect a single match so retrieve the first (and only) file
+        dbFile = contents.get(0)
+
+        with open(pathToLostFoundCSV, "r") as csvfile:  # Python 2.x doesn't allow 'encoding' keyword argument
+            lines = csvfile.readlines()
+            records = lines[1:]  # Ignore header row (i.e. first row)
+            for record in records:
+                self._newArtifactFBLostFound(dbFile, record)
+
+    # The 'sourceFile' object being passed in is of type org.sleuthkit.datamodel.Content
+    # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
+    # The 'sourceFile' object is assumed to be a Facebook Messenger (Beta) SQLite database file with name similar to 'msys_1234567890.db'
+    def _newArtifactFBLostFound(self, sourceFile, record):
+        moduleName = W10FaceMessengerIngestModuleFactory.moduleName
+        attributeType = BlackboardAttribute.ATTRIBUTE_TYPE.TSK_TEXT
+        attribute = BlackboardAttribute(attributeType, moduleName, record)
+        artifactTypeId = self.ARTIFACT_TYPE_FB_LOST_FOUND.getTypeID()
+        artifact = sourceFile.newArtifact(artifactTypeId)
+        artifact.addAttribute(attribute)
+        return artifact
+
     # The 'content' object being passed in is of type org.sleuthkit.datamodel.Content
     # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
     # The 'content' object is assumed to be a Facebook Messenger (Beta) AppData directory with name 'Facebook.FacebookMessenger_8xx8rvfyw5nnt'
@@ -352,7 +393,7 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
             for contact in contacts:
                 self._newArtifactFBContact(dbFile, contact)
                 self._newArtifactTSKContact(appDbHelper, contact)
-    
+
     # The 'sourceFile' object being passed in is of type org.sleuthkit.datamodel.Content
     # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
     # The 'sourceFile' object is assumed to be a Facebook Messenger (Beta) SQLite database file with name similar to 'msys_1234567890.db'
@@ -390,7 +431,7 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
         homePhoneNumber = ""
         mobilePhoneNumber = ""
         emailAddr = contact[4]
-        
+
         moduleName = W10FaceMessengerIngestModuleFactory.moduleName
         attributeFacebookId = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_ID, moduleName, facebookId)
         additionalAttributes = ArrayList()
@@ -399,7 +440,7 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
         artifact = appDbHelper.addContact(contactName, phoneNumber, homePhoneNumber, mobilePhoneNumber, emailAddr, additionalAttributes)
 
         return artifact
-    
+
     # The 'content' object being passed in is of type org.sleuthkit.datamodel.Content
     # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
     # The 'content' object is assumed to be a Facebook Messenger (Beta) AppData directory with name 'Facebook.FacebookMessenger_8xx8rvfyw5nnt'
@@ -420,7 +461,7 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
             return
         # Expect a single match so retrieve the first (and only) file
         dbFile = contents.get(0)
-        
+
         participants = self._getParticipants(pathToConversationsCSV)
 
         sleuthkitCase = Case.getCurrentCase().getSleuthkitCase()
