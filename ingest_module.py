@@ -5,24 +5,16 @@ import datetime
 import calendar
 from collections import defaultdict
 
-import java.util.ArrayList as ArrayList
 from java.io import File
-from java.lang import System
 from java.lang import ProcessBuilder
+from java.util import ArrayList
 from java.util.logging import Level
-from org.sleuthkit.datamodel import SleuthkitCase
-from org.sleuthkit.datamodel import AbstractFile
-from org.sleuthkit.datamodel import ReadContentInputStream
-from org.sleuthkit.datamodel import BlackboardArtifact
 from org.sleuthkit.datamodel import BlackboardAttribute
-from org.sleuthkit.datamodel import CommunicationsManager
-from org.sleuthkit.datamodel import Relationship
 from org.sleuthkit.datamodel import Account
 from org.sleuthkit.datamodel.blackboardutils import CommunicationArtifactsHelper
 from org.sleuthkit.datamodel.blackboardutils.CommunicationArtifactsHelper import CommunicationDirection
 from org.sleuthkit.datamodel.blackboardutils.CommunicationArtifactsHelper import MessageReadStatus
 from org.sleuthkit.datamodel.blackboardutils.attributes import MessageAttachments
-from org.sleuthkit.datamodel.blackboardutils.attributes.MessageAttachments import FileAttachment
 from org.sleuthkit.datamodel.blackboardutils.attributes.MessageAttachments import URLAttachment
 from org.sleuthkit.autopsy.ingest import IngestModule
 from org.sleuthkit.autopsy.ingest import IngestJobContext
@@ -37,8 +29,6 @@ from org.sleuthkit.autopsy.coreutils import Logger
 from org.sleuthkit.autopsy.coreutils import ExecUtil
 from org.sleuthkit.autopsy.datamodel import ContentUtils
 from org.sleuthkit.autopsy.casemodule import Case
-from org.sleuthkit.autopsy.casemodule.services import Services
-from org.sleuthkit.autopsy.casemodule.services import FileManager
 
 
 # Factory that defines the name and details of the module
@@ -79,13 +69,11 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
     # See http://sleuthkit.org/autopsy/docs/api-docs/latest/classorg_1_1sleuthkit_1_1autopsy_1_1ingest_1_1_ingest_job_context.html
     def startUp(self, context):
         self.context = context
-
         if not PlatformUtil.isWindowsOS():
             raise IngestModuleException("Not running on Windows")
         self.EXE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "w10-facemessenger.exe")
         if not os.path.exists(self.EXE_PATH):
             raise IngestModuleException("w10-facemessenger.exe was not found in module folder")
-
         self._startUpAttributeTypes()
         self._startUpArtifactTypes()
 
@@ -171,7 +159,7 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
             # Ignore false positives
             if not content.isDir():
                 continue
-            # XXX (ricardoapl) Where the (real) analysis happens
+            # Where the REAL analysis happens
             self._process(content)
 
         # Once we are done, post a message to the ingest messages inbox
@@ -257,7 +245,6 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
         if not os.path.exists(pathToCachedImagesCSV):
             self.log(Level.INFO, "Unable to find cached images CSV report")
             return
-
         with open(pathToCachedImagesCSV, "r") as csvfile:  # Python 2.x doesn't allow 'encoding' keyword argument
             images = csv.reader(csvfile)  # TODO (ricardoapl) Add CSV delimiter ('~', '^')
             next(images)  # Ignore header row (i.e. first row)
@@ -295,9 +282,9 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
         sourceContent = contents.get(0)
         return sourceContent
 
-    # The 'content' object being passed in is of type org.sleuthkit.datamodel.Content
+    # The 'sourceFile' object being passed in is of type org.sleuthkit.datamodel.Content
     # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
-    def _newArtifactFBCachedImage(self, content, image):
+    def _newArtifactFBCachedImage(self, sourceFile, image):
         # XXX (ricardoapl) Check if artifact already exists
         # See https://sleuthkit.discourse.group/t/clearing-a-blackboard-folder-each-time/265/3
         dateAccessed = image[2]
@@ -325,7 +312,7 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
         attributeUrl = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_URL, moduleName, url)
         attributeDateTimeAccessed = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_DATETIME_ACCESSED, moduleName, timestamp)
 
-        artifact = content.newArtifact(self.ARTIFACT_TYPE_FB_CACHED_IMAGE.getTypeID())
+        artifact = sourceFile.newArtifact(self.ARTIFACT_TYPE_FB_CACHED_IMAGE.getTypeID())
         artifact.addAttribute(attributeUrl)
         artifact.addAttribute(attributeDateTimeAccessed)
 
