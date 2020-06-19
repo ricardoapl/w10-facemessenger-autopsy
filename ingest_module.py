@@ -323,29 +323,37 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
 
         return artifact
 
+    # The 'content' object being passed in is of type org.sleuthkit.datamodel.Content
+    # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
+    # The 'content' object is assumed to be a Facebook Messenger (Beta) AppData directory with name 'Facebook.FacebookMessenger_8xx8rvfyw5nnt'
     def _analyzeLostFound(self, content, path):
         pathToLostFoundCSV = os.path.join(path, "report-undark.csv")
         if not os.path.exists(pathToLostFoundCSV):
             self.log(Level.INFO, "Unable to find undark CSV report")
             return
-
-        # We assume there exists a msys database from which the report was produced
-        fileManager = Case.getCurrentCase().getServices().getFileManager()
-        dataSource = content.getDataSource()
-        fileName = "msys_%.db"
-        dirName = os.path.join(content.getParentPath(), content.getName())
-        contents = fileManager.findFiles(dataSource, fileName, dirName)
-        if contents.isEmpty():
-            self.log(Level.INFO, "Unable to find msys database")
-            return
-        # Expect a single match so retrieve the first (and only) file
-        dbFile = contents.get(0)
-
+        
+        # We assume there exists a database file from which the report was produced
+        dbFile = self._getUserDbFile(content, "%")
+        
         with open(pathToLostFoundCSV, "r") as csvfile:  # Python 2.x doesn't allow 'encoding' keyword argument
             lines = csvfile.readlines()
             records = lines[1:]  # Ignore header row (i.e. first row)
             for record in records:
                 self._newArtifactFBLostFound(dbFile, record)
+
+    # The 'appDirectory' object being passed in is of type org.sleuthkit.datamodel.Content
+    # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
+    def _getUserDbFile(self, appDirectory, userId):
+        fileManager = Case.getCurrentCase().getServices().getFileManager()
+        dataSource = appDirectory.getDataSource()
+        fileName = "msys_" + userId + ".db"
+        dirName = os.path.join(appDirectory.getParentPath(), appDirectory.getName())
+        results = fileManager.findFiles(dataSource, fileName, dirName)
+        if results.isEmpty():
+            self.log(Level.INFO, "Unable to find file '" + fileName + "'")
+            return  # XXX (ricardoapl) We should probably raise an exception
+        dbFile = results.get(0)  # Expect a single match so retrieve the first (and only) file
+        return dbFile
 
     # The 'sourceFile' object being passed in is of type org.sleuthkit.datamodel.Content
     # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
@@ -368,17 +376,8 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
             self.log(Level.INFO, "Unable to find contacts CSV report")
             return
 
-        # We assume there exists a msys database from which the report was produced
-        fileManager = Case.getCurrentCase().getServices().getFileManager()
-        dataSource = content.getDataSource()
-        fileName = "msys_%.db"
-        dirName = os.path.join(content.getParentPath(), content.getName())
-        contents = fileManager.findFiles(dataSource, fileName, dirName)
-        if contents.isEmpty():
-            self.log(Level.INFO, "Unable to find msys database")
-            return
-        # Expect a single match so retrieve the first (and only) file
-        dbFile = contents.get(0)
+        # We assume there exists a database file from which the report was produced
+        dbFile = self._getUserDbFile(content, "%")
 
         sleuthkitCase = Case.getCurrentCase().getSleuthkitCase()
         moduleName = W10FaceMessengerIngestModuleFactory.moduleName
@@ -450,17 +449,8 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
             self.log(Level.INFO, "Unable to find conversations CSV report")
             return
 
-        # We assume there exists a msys database from which the report was produced
-        fileManager = Case.getCurrentCase().getServices().getFileManager()
-        dataSource = content.getDataSource()
-        fileName = "msys_%.db"
-        dirName = os.path.join(content.getParentPath(), content.getName())
-        contents = fileManager.findFiles(dataSource, fileName, dirName)
-        if contents.isEmpty():
-            self.log(Level.INFO, "Unable to find msys database")
-            return
-        # Expect a single match so retrieve the first (and only) file
-        dbFile = contents.get(0)
+        # We assume there exists a database file from which the report was produced
+        dbFile = self._getUserDbFile(content, "%")
 
         participants = self._getParticipants(pathToConversationsCSV)
 
