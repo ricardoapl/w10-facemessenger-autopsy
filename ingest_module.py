@@ -300,11 +300,35 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
     def _newArtifactFBCachedImage(self, content, image):
         # XXX (ricardoapl) Check if artifact already exists
         # See https://sleuthkit.discourse.group/t/clearing-a-blackboard-folder-each-time/265/3
-        source = W10FaceMessengerIngestModuleFactory.moduleName
-        location, origin, timestamp, url = image  # XXX (ricardoapl) Unpacking the whole list seems overkill
-        attributeUrl = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_URL, source, url)
+        dateAccessed = image[2]
+        url = image[3]
+
+        # XXX (ricardoapl) Date/Time manipulation should be done in W10-FaceMessenger executable
+        dateTimeFormat = "%Y-%m-%dT%H:%M:%S.%f"
+        offsetFormat = "%H:%M"
+        if "+" in dateAccessed:
+            dateTimeString, offsetString = dateAccessed.split("+")
+            dateTime = datetime.datetime.strptime(dateTimeString, dateTimeFormat)
+            offset = datetime.datetime.strptime(offsetString, offsetFormat)
+            offset = datetime.timedelta(hours=offset.hour, minutes=offset.minute)
+            dateTime = dateTime + offset
+        elif "-" in dateAccessed:
+            dateString, utcOffset = dateAccessed.split("-")
+            dateTime = datetime.datetime.strptime(dateTimeString, dateTimeFormat)
+            offset = datetime.datetime.strptime(offsetString, offsetFormat)
+            offset = datetime.timedelta(hours=offset.hour, minutes=offset.minute)
+            dateTime = dateTime - offset
+        timeStruct = dateTime.timetuple()
+        timestamp = int(calendar.timegm(timeStruct))
+
+        moduleName = W10FaceMessengerIngestModuleFactory.moduleName
+        attributeUrl = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_URL, moduleName, url)
+        attributeDateTimeAccessed = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_DATETIME_ACCESSED, moduleName, timestamp)
+
         artifact = content.newArtifact(self.ARTIFACT_TYPE_FB_CACHED_IMAGE.getTypeID())
         artifact.addAttribute(attributeUrl)
+        artifact.addAttribute(attributeDateTimeAccessed)
+
         return artifact
 
     # The 'content' object being passed in is of type org.sleuthkit.datamodel.Content
