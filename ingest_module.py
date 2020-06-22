@@ -430,7 +430,7 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
     # See http://sleuthkit.org/sleuthkit/docs/jni-docs/4.9.0//classorg_1_1sleuthkit_1_1datamodel_1_1blackboardutils_1_1_communication_artifacts_helper.html#a3e64e93ebc1aaec36c336b6f623ff7e7
     def _newArtifactTSKContact(self, appDbHelper, contact):
         facebookId = contact[0]
-        contactName = contact[2]
+        contactName = contact[2] or "N/A"
         phoneNumber = contact[3]
         homePhoneNumber = ""
         mobilePhoneNumber = ""
