@@ -1,6 +1,5 @@
 import os
 import inspect
-import io
 import csv
 import datetime
 import calendar
@@ -245,10 +244,11 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
         artifactType = self._createArtifactType(artifactTypeName, artifactDisplayName)
         artifactTypeId = artifactType.getTypeID()
 
-        with io.open(pathToCachedImagesCSV, "r", encoding="utf-8") as csvfile:
-            images = csv.reader(csvfile, delimiter=self.CSV_DELIMITER)
-            next(images)  # Ignore header row (i.e. first row)
-            for image in images:
+        with open(pathToCachedImagesCSV, "rb") as csvfile:
+            rows = csv.reader(csvfile, delimiter=self.CSV_DELIMITER)
+            next(rows)  # Ignore header row (i.e. first row)
+            for row in rows:
+                image = [column.decode("utf8") for column in row]
                 sourceContent = self._getCachedImageSourceContent(content, image)
                 self._newArtifactFBCachedImage(sourceContent, image, artifactTypeId)
 
@@ -335,11 +335,11 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
         artifactType = self._createArtifactType(artifactTypeName, artifactDisplayName)
         artifactTypeId = artifactType.getTypeID()
 
-        with io.open(pathToLostFoundCSV, "r", encoding="utf-8") as csvfile:
+        with open(pathToLostFoundCSV, "r") as csvfile:
             lines = csvfile.readlines()
-            records = lines[1:]  # Ignore header row (i.e. first row)
-            for record in records:
-                self._newArtifactFBLostFound(dbFile, record, artifactTypeId)
+            lines = lines[1:]  # Ignore header line (i.e. first line)
+            for line in lines:
+                self._newArtifactFBLostFound(dbFile, line, artifactTypeId)
 
     # The 'appDirectory' object being passed in is of type org.sleuthkit.datamodel.Content
     # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
@@ -391,10 +391,11 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
         selfAccountId = userId
         appDbHelper = CommunicationArtifactsHelper(sleuthkitCase, moduleName, srcContent, accountType, accountType, selfAccountId)
 
-        with io.open(pathToContactsCSV, "r", encoding="utf-8") as csvfile:
-            contacts = csv.reader(csvfile, delimiter=self.CSV_DELIMITER)
-            next(contacts)  # Ignore header row (i.e. first row)
-            for contact in contacts:
+        with open(pathToContactsCSV, "rb") as csvfile:
+            rows = csv.reader(csvfile, delimiter=self.CSV_DELIMITER)
+            next(rows)  # Ignore header row (i.e. first row)
+            for row in rows:
+                contact = [column.decode("utf8") for column in row]
                 self._newArtifactFBContact(dbFile, contact, artifactTypeId)
                 self._newArtifactTSKContact(appDbHelper, contact)
 
@@ -481,16 +482,17 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
             threadId = thread.rsplit(".", 1)[0]  # Files are named after the threads, ignore their extension
             threadParticipants = participants[threadId]
             pathToMessagesCSV = os.path.join(pathToThreads, thread)
-            with io.open(pathToMessagesCSV, "r", encoding="utf-8") as csvfile:
-                messages = csv.reader(csvfile, delimiter=self.CSV_DELIMITER)
-                next(messages)  # Ignore header row (i.e. first row)
-                for message in messages:
+            with open(pathToMessagesCSV, "rb") as csvfile:
+                rows = csv.reader(csvfile, delimiter=self.CSV_DELIMITER)
+                next(rows)  # Ignore header row (i.e. first row)
+                for row in rows:
+                    message = [column.decode("utf8") for column in row]
                     self._newArtifactFBMessage(dbFile, message, artifactTypeId)
                     self._newArtifactTSKMessage(appDbHelper, message, threadParticipants, selfAccountId)
 
     def _getParticipants(self, path):
         participants = defaultdict(list)
-        with io.open(path, "r", encoding="utf-8") as csvfile:
+        with open(path, "r") as csvfile:
             rows = csv.reader(csvfile, delimiter=self.CSV_DELIMITER)
             next(rows)  # Ignore header row (i.e. first row)
             for row in rows:
