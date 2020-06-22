@@ -14,6 +14,7 @@ from org.sleuthkit.datamodel import Account
 from org.sleuthkit.datamodel.blackboardutils import CommunicationArtifactsHelper
 from org.sleuthkit.datamodel.blackboardutils.CommunicationArtifactsHelper import CommunicationDirection
 from org.sleuthkit.datamodel.blackboardutils.CommunicationArtifactsHelper import MessageReadStatus
+from org.sleuthkit.datamodel.blackboardutils.CommunicationArtifactsHelper import CallMediaType
 from org.sleuthkit.datamodel.blackboardutils.attributes import MessageAttachments
 from org.sleuthkit.datamodel.blackboardutils.attributes.MessageAttachments import URLAttachment
 from org.sleuthkit.autopsy.ingest import IngestModule
@@ -228,7 +229,7 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
             pathToFacebookUserReport = os.path.join(pathToReports, facebookUserId)
             self._analyzeLostFound(content, pathToFacebookUserReport, facebookUserId)
             self._analyzeContacts(content, pathToFacebookUserReport, facebookUserId)
-            self._analyzeMessages(content, pathToFacebookUserReport, facebookUserId)
+            self._analyzeMessagesAndCalllogs(content, pathToFacebookUserReport, facebookUserId)
 
     # The 'content' object being passed in is of type org.sleuthkit.datamodel.Content
     # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
@@ -449,7 +450,7 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
     # The 'content' object being passed in is of type org.sleuthkit.datamodel.Content
     # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
     # The 'content' object is assumed to be a Facebook Messenger (Beta) AppData directory with name 'Facebook.FacebookMessenger_8xx8rvfyw5nnt'
-    def _analyzeMessages(self, content, path, userId):
+    def _analyzeMessagesAndCalllogs(self, content, path, userId):
         pathToConversationsCSV = os.path.join(path, "conversations.csv")
         if not os.path.exists(pathToConversationsCSV):
             self.log(Level.INFO, "Unable to find conversations CSV report")
@@ -458,10 +459,14 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
         # We assume there exists a database file from which the report was produced
         dbFile = self._getUserDbFile(content, userId)
 
+        artifactTypeName = "FB_CALLOG_" + userId
+        artifactDisplayName = "User " + userId + " Audio/Video Calls"
+        artifactCallogType = self._createArtifactType(artifactTypeName, artifactDisplayName)
+        artifactCallogTypeId = artifactCallogType.getTypeID()
         artifactTypeName = "FB_MESSAGE_" + userId
         artifactDisplayName = "User " + userId + " Messages"
-        artifactType = self._createArtifactType(artifactTypeName, artifactDisplayName)
-        artifactTypeId = artifactType.getTypeID()
+        artifactMessageType = self._createArtifactType(artifactTypeName, artifactDisplayName)
+        artifactMessageTypeId = artifactMessageType.getTypeID()
 
         participants = self._getParticipants(pathToConversationsCSV)
 
@@ -487,8 +492,13 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
                 next(rows)  # Ignore header row (i.e. first row)
                 for row in rows:
                     message = [column.decode("utf8") for column in row]
-                    self._newArtifactFBMessage(dbFile, message, artifactTypeId)
-                    self._newArtifactTSKMessage(appDbHelper, message, threadParticipants, selfAccountId)
+                    # XXX (ricardoapl) Message type handling is not this methods responsibility
+                    if self._isCalllog(message):
+                        self._newArtifactFBCalllog(dbFile, message, artifactCallogTypeId)
+                        self._newArtifactTSKCallog(appDbHelper, message, threadParticipants, selfAccountId)
+                    else:
+                        self._newArtifactFBMessage(dbFile, message, artifactMessageTypeId)
+                        self._newArtifactTSKMessage(appDbHelper, message, threadParticipants, selfAccountId)
 
     def _getParticipants(self, path):
         participants = defaultdict(list)
@@ -500,6 +510,92 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
                 participantId = row[4]
                 participants[threadId].append(participantId)
         return participants
+
+    def _isCalllog(self, message):
+        ctaType = message[9]
+        ctaCallogTypes = [
+            "xma_rtc_missed_audio",
+            "xma_rtc_ended_audio",
+            "xma_rtc_missed_video",
+            "xma_rtc_ended_video"
+        ]
+        if ctaType in ctaCallogTypes:
+            return True
+        else:
+            return False
+
+    # The 'sourceFile' object being passed in is of type org.sleuthkit.datamodel.Content
+    # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
+    # The 'sourceFile' object is assumed to be a Facebook Messenger (Beta) SQLite database file with name similar to 'msys_1234567890.db'
+    def _newArtifactFBCalllog(self, sourceFile, call, artifactTypeId):
+        # XXX (ricardoapl) Check if artifact already exists
+        # See https://sleuthkit.discourse.group/t/clearing-a-blackboard-folder-each-time/265/3
+        threadId = call[0]
+        dateString = call[1]
+        callerId = call[2]
+        callerName = call[3]
+
+        formatString = "%Y-%m-%d %H:%M:%S"
+        # We assume 'dateString' is in UTC/GMT
+        dateTime = datetime.datetime.strptime(dateString, formatString)
+        timeStruct = dateTime.timetuple()
+        timestamp = int(calendar.timegm(timeStruct))
+
+        moduleName = W10FaceMessengerIngestModuleFactory.moduleName
+        attributeThreadId = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_THREAD_ID, moduleName, threadId)
+        attributeDateTime = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_DATETIME, moduleName, timestamp)
+        attributeCallerId = BlackboardAttribute(self.ATTRIBUTE_TYPE_FB_USER_ID_FROM, moduleName, callerId)
+        attributeCallerName = BlackboardAttribute(self.ATTRIBUTE_TYPE_FB_DISPLAY_NAME_FROM, moduleName, callerName)
+
+        artifact = sourceFile.newArtifact(artifactTypeId)
+        artifact.addAttribute(attributeThreadId)
+        artifact.addAttribute(attributeDateTime)
+        artifact.addAttribute(attributeCallerId)
+        artifact.addAttribute(attributeCallerName)
+
+        return artifact
+
+    # The 'content' object being passed in is of type org.sleuthkit.datamodel.Content
+    # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
+    # The 'content' object is assumed to be a Facebook Messenger (Beta) SQLite database file with name similar to 'msys_1234567890.db'
+    def _newArtifactTSKCallog(self, appDbHelper, call, callees, selfAccountId):
+        dateString = call[1]
+        callerId = call[2]
+
+        formatString = "%Y-%m-%d %H:%M:%S"
+        # We assume 'dateString' is in UTC/GMT
+        dateTime = datetime.datetime.strptime(dateString, formatString)
+        timeStruct = dateTime.timetuple()
+        timestamp = int(calendar.timegm(timeStruct))
+
+        direction = self._deduceCommunicationDirection(callerId, selfAccountId)
+        calleeIdsList = [calleeId for calleeId in callees if calleeId != callerId]
+        startDateTime = timestamp
+        endDateTime = 0  # '0' corresponds to 'not available'
+        mediaType = self._deduceCallMediaType(call)
+
+        artifact = appDbHelper.addCalllog(direction, callerId, calleeIdsList, startDateTime, endDateTime, mediaType)
+
+        return artifact
+
+    def _deduceCommunicationDirection(self, senderId, selfAccountId):
+        direction = CommunicationDirection.UNKNOWN
+        if senderId == selfAccountId:
+            direction = CommunicationDirection.OUTGOING
+        else:
+            direction = CommunicationDirection.INCOMING
+        return direction
+
+    def _deduceCallMediaType(self, call):
+        ctaType = call[9]
+        ctaAudioTypes = ["xma_rtc_missed_audio", "xma_rtc_ended_audio"]
+        ctaVideoTypes = ["xma_rtc_missed_video", "xma_rtc_ended_video"]
+        mediaType = CallMediaType.UNKNOWN
+        if ctaType in ctaAudioTypes:
+            mediaType = CallMediaType.AUDIO
+        elif ctaType in ctaVideoTypes:
+            mediaType = CallMediaType.VIDEO
+        return mediaType
 
     # The 'sourceFile' object being passed in is of type org.sleuthkit.datamodel.Content
     # See http://www.sleuthkit.org/sleuthkit/docs/jni-docs/latest/interfaceorg_1_1sleuthkit_1_1datamodel_1_1_content.html
@@ -556,7 +652,7 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
 
         subject = ""
         messageType = "Messenger (Beta)"
-        direction = self._deduceMessageDirection(senderId, selfAccountId)
+        direction = self._deduceCommunicationDirection(senderId, selfAccountId)
         recipientIdsList = [participantId for participantId in participants if participantId != senderId]
         readStatus = MessageReadStatus.UNKNOWN
 
@@ -570,11 +666,3 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
         appDbHelper.addAttachments(artifact, messageAttachments)
 
         return artifact
-
-    def _deduceMessageDirection(self, senderId, selfAccountId):
-        direction = CommunicationDirection.UNKNOWN
-        if senderId == selfAccountId:
-            direction = CommunicationDirection.OUTGOING
-        else:
-            direction = CommunicationDirection.INCOMING
-        return direction
