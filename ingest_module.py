@@ -94,10 +94,15 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
         attributeDisplayName = "From Display Name"
         self.ATTRIBUTE_TYPE_FB_DISPLAY_NAME_FROM = self._createAttributeType(attributeName, attributeValue, attributeDisplayName)
 
-        attributeName = "FB_ATTACHMENT_URL"
+        attributeName = "FB_PREVIEW_URL"
         attributeValue = BlackboardAttribute.TSK_BLACKBOARD_ATTRIBUTE_VALUE_TYPE.STRING
-        attributeDisplayName = "Attachment URL"
-        self.ATTRIBUTE_TYPE_FB_URL_CONTENT = self._createAttributeType(attributeName, attributeValue, attributeDisplayName)
+        attributeDisplayName = "Preview URL"
+        self.ATTRIBUTE_TYPE_FB_URL_PREVIEW = self._createAttributeType(attributeName, attributeValue, attributeDisplayName)
+
+        attributeName = "FB_PLAYABLE_URL"
+        attributeValue = BlackboardAttribute.TSK_BLACKBOARD_ATTRIBUTE_VALUE_TYPE.STRING
+        attributeDisplayName = "Playable URL"
+        self.ATTRIBUTE_TYPE_FB_URL_PLAYABLE = self._createAttributeType(attributeName, attributeValue, attributeDisplayName)
 
     # Wrapper method for org.sleuthkit.datamodel.Blackboard.getOrAddAttributeType
     # See http://sleuthkit.org/sleuthkit/docs/jni-docs/4.9.0/classorg_1_1sleuthkit_1_1datamodel_1_1_blackboard.html#a0b6ee76fbbdbab422a2d97fff0848dd7
@@ -608,6 +613,7 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
         senderId = message[2]
         senderName = message[3]
         text = message[4]
+        previewURL = message[5]
         playableURL = message[6]
 
         formatString = "%Y-%m-%d %H:%M:%S"
@@ -622,7 +628,8 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
         attributeSenderId = BlackboardAttribute(self.ATTRIBUTE_TYPE_FB_USER_ID_FROM, moduleName, senderId)
         attributeSenderName = BlackboardAttribute(self.ATTRIBUTE_TYPE_FB_DISPLAY_NAME_FROM, moduleName, senderName)
         attributeText = BlackboardAttribute(BlackboardAttribute.ATTRIBUTE_TYPE.TSK_TEXT, moduleName, text)
-        attributeAttachmentURL = BlackboardAttribute(self.ATTRIBUTE_TYPE_FB_URL_CONTENT, moduleName, playableURL)
+        attributePreviewURL = BlackboardAttribute(self.ATTRIBUTE_TYPE_FB_URL_PREVIEW, moduleName, previewURL)
+        attributePlayableURL = BlackboardAttribute(self.ATTRIBUTE_TYPE_FB_URL_PLAYABLE, moduleName, playableURL)
 
         artifact = sourceFile.newArtifact(artifactTypeId)
         artifact.addAttribute(attributeThreadId)
@@ -630,7 +637,8 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
         artifact.addAttribute(attributeSenderId)
         artifact.addAttribute(attributeSenderName)
         artifact.addAttribute(attributeText)
-        artifact.addAttribute(attributeAttachmentURL)
+        artifact.addAttribute(attributePreviewURL)
+        artifact.addAttribute(attributePlayableURL)
 
         return artifact
 
@@ -642,7 +650,8 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
         dateString = message[1]
         senderId = message[2]
         messageText = message[4]
-        attachmentURL = message[6]
+        previewURL = message[5]
+        playableURL = message[6]
 
         formatString = "%Y-%m-%d %H:%M:%S"
         # We assume 'dateString' is in UTC/GMT
@@ -660,8 +669,10 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
 
         fileAttachments = ArrayList()
         urlAttachments = ArrayList()
-        if (attachmentURL != ""):
-            urlAttachments.add(URLAttachment(attachmentURL))
+        if (previewURL != ""):
+            urlAttachments.add(URLAttachment(previewURL))
+        if (playableURL != ""):
+            urlAttachments.add(URLAttachment(playableURL))
         messageAttachments = MessageAttachments(fileAttachments, urlAttachments)
         appDbHelper.addAttachments(artifact, messageAttachments)
 
