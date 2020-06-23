@@ -669,9 +669,9 @@ class W10FaceMessengerIngestModule(DataSourceIngestModule):
 
         fileAttachments = ArrayList()
         urlAttachments = ArrayList()
-        if (previewURL != ""):
+        if previewURL:
             urlAttachments.add(URLAttachment(previewURL))
-        if (playableURL != ""):
+        if playableURL:
             urlAttachments.add(URLAttachment(playableURL))
         messageAttachments = MessageAttachments(fileAttachments, urlAttachments)
         appDbHelper.addAttachments(artifact, messageAttachments)
