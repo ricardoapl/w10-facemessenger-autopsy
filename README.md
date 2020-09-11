@@ -1,6 +1,6 @@
 ## Overview
 
-W10-FaceMessenger @ Autopsy is an Autopsy data source ingest module that wraps around the stand-alone application [W10-FaceMessenger](https://github.com/ricardoapl/w10-facemessenger) to parse and create the following artifacts associated with the use of Facebook Messenger (Beta) on Windows 10:
+W10-FaceMessenger @ Autopsy is an Autopsy data source ingest module that wraps around the stand-alone application [W10-FaceMessenger](https://github.com/ricardoapl/w10-facemessenger) to parse and create the following artifacts associated with the use of Facebook's [Messenger (Beta)](https://www.microsoft.com/en-us/p/messenger-beta/9nblggh2t5jk) on Windows 10:
 
 - Contacts
 - Messages
