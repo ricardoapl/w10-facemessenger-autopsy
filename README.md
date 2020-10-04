@@ -24,7 +24,7 @@ Otherwise, you must:
 
 For the time being, you must run Microsoft Windows.
 
-You also need a self-contained executable of W10-FaceMessenger to run this module (see [here](https://github.com/ricardoapl/w10-facemessenger)).
+You also need a self-contained executable of W10-FaceMessenger to run this module (see [here](https://github.com/ricardoapl/w10-facemessenger/releases)).
 
 ## Usage
 
