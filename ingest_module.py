@@ -45,7 +45,7 @@ class W10FaceMessengerIngestModuleFactory(IngestModuleFactoryAdapter):
         return "Data Source-level Ingest Module that wraps around W10-FaceMessenger."
 
     def getModuleVersionNumber(self):
-        return "1.0"
+        return "1.0.0"
 
     def isDataSourceIngestModuleFactory(self):
         return True

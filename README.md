@@ -12,17 +12,19 @@ W10-FaceMessenger @ Autopsy is an Autopsy data source ingest module that wraps a
 
 If you have never installed a third-party module in Autopsy, have a look at the official [Autopsy User Documentation](https://sleuthkit.org/autopsy/docs/user-docs/4.16.0/module_install_page.html).
 
-To install W10-FaceMessenger @ Autopsy you must:
+If you choose to use one of the existing [releases](https://github.com/ricardoapl/w10-facemessenger-autopsy/releases), all you need to do is extract the contents of the ZIP file onto `python_modules`.
+
+Otherwise, you must:
 
 1. Create a folder named `w10-facemessenger` within `python_modules`
 2. Place `ingest_module.py` into this new folder
-3. Place the W10-FaceMessenger executable into this same folder
+3. Place the W10-FaceMessenger self-contained executable into this same folder
 
 ## Requirements
 
 For the time being, you must run Microsoft Windows.
 
-You also need a binary distribution of W10-FaceMessenger to run this module (see [here](https://github.com/ricardoapl/w10-facemessenger)).
+You also need a self-contained executable of W10-FaceMessenger to run this module (see [here](https://github.com/ricardoapl/w10-facemessenger)).
 
 ## Usage
 
