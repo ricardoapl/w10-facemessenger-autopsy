@@ -32,6 +32,13 @@ W10-FaceMessenger @ Autopsy expects a data source containing at least one Window
 
 If you would like to know more about running ingest modules in Autopsy, checkout the official [Autopsy User Documentation](https://sleuthkit.org/autopsy/docs/user-docs/4.16.0/ingest_page.html).
 
+## Known issues
+
+Please read through the following list of known issues before asking for help.
+
+- Part of our module is currently being flagged as malicious by some anti-malware solutions (see [here](https://github.com/ricardoapl/w10-facemessenger#known-issues))
+- Consecutive runs of the module in the same case are currently not being handled and will most likely return an error
+
 ## Support
 
 Please use the [issue tracker](https://github.com/ricardoapl/w10-facemessenger-autopsy/issues) to ask for help, request a new feature or report any bugs.
@@ -40,7 +47,6 @@ Please use the [issue tracker](https://github.com/ricardoapl/w10-facemessenger-a
 
 - [ ] Distinguish between successful and lost calls
 - [ ] Allow persistence of multimedia content through module options
-- [ ] Handle multiple (consecutive) runs of the module in the same case
 
 ## Contributing
 
